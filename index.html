@@ -449,34 +449,150 @@
                 ctx.fillText(`Cycles: ${this.cycles} | Instructions: ${this.instrs}`, 20, 90);
                 ctx.fillText(`Status: ${this.halted ? 'HALTED' : 'RUNNING'}`, 20, 120);
 
-                // Draw simple diagram
+                // Determine active component based on instruction
+                const instr = this.program[this.pc - 1] || {};
+                const isLoad = instr.op === 'LOAD';
+                const isStore = instr.op === 'STORE';
+                const isAdd = instr.op === 'ADD';
+
+                // Draw PC with highlighting
                 ctx.strokeStyle = '#333';
                 ctx.lineWidth = 2;
+                if (!this.halted) {
+                    ctx.fillStyle = '#e3f2fd';  // Light blue background for active
+                    ctx.fillRect(50, 150, 100, 60);
+                }
                 ctx.strokeRect(50, 150, 100, 60);
                 ctx.fillStyle = '#333';
-                ctx.font = '12px Arial';
-                ctx.fillText('PC: ' + this.pc, 70, 185);
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText('PC', 85, 170);
+                ctx.font = '16px monospace';
+                ctx.fillStyle = '#667eea';
+                ctx.fillText(this.pc.toString(), 85, 195);
 
+                // Draw Registers with highlighting
+                if (isAdd || isLoad) {
+                    ctx.fillStyle = '#c8e6c9';  // Light green for active
+                    ctx.fillRect(200, 150, 150, 100);
+                }
                 ctx.strokeRect(200, 150, 150, 100);
-                ctx.fillText('Registers', 240, 175);
+                ctx.fillStyle = '#333';
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText('Register File', 230, 170);
                 ctx.font = '10px monospace';
                 for(let i = 0; i < 4; i++) {
-                    ctx.fillText(`R${i}:${this.regs[i]}`, 210, 195 + i*15);
-                    ctx.fillText(`R${i+4}:${this.regs[i+4]}`, 280, 195 + i*15);
+                    // Highlight recently modified register
+                    if (instr.rd === i || instr.rd === i+4) {
+                        ctx.fillStyle = '#4caf50';  // Green for modified
+                        ctx.font = 'bold 10px monospace';
+                    } else {
+                        ctx.fillStyle = '#333';
+                        ctx.font = '10px monospace';
+                    }
+                    ctx.fillText(`R${i}:${this.regs[i]}`, 210, 190 + i*15);
+                    ctx.fillText(`R${i+4}:${this.regs[i+4]}`, 280, 190 + i*15);
                 }
 
-                ctx.font = '12px Arial';
+                // Draw ALU with highlighting
+                ctx.font = 'bold 12px Arial';
+                if (isAdd) {
+                    ctx.fillStyle = '#fff9c4';  // Light yellow for active
+                    ctx.fillRect(400, 150, 100, 60);
+                }
                 ctx.strokeRect(400, 150, 100, 60);
-                ctx.fillText('ALU', 430, 185);
+                ctx.fillStyle = '#333';
+                ctx.fillText('ALU', 430, 175);
+                if (isAdd) {
+                    ctx.fillStyle = '#ff9800';  // Orange for operation
+                    ctx.font = 'bold 14px Arial';
+                    ctx.fillText('ADD', 425, 195);
+                }
 
+                // Draw Memory with highlighting
+                if (isLoad || isStore) {
+                    ctx.fillStyle = '#f8bbd0';  // Light pink for active
+                    ctx.fillRect(550, 150, 150, 80);
+                }
                 ctx.strokeRect(550, 150, 150, 80);
-                ctx.fillText('Memory', 600, 175);
+                ctx.fillStyle = '#333';
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText('Memory', 600, 170);
                 ctx.font = '10px monospace';
-                ctx.fillText(`M[0]:${this.mem[0x80]}`, 560, 195);
-                ctx.fillText(`M[1]:${this.mem[0x81]}`, 560, 210);
-                ctx.fillText(`M[2]:${this.mem[0x82]}`, 560, 225);
-                ctx.fillText(`M[3]:${this.mem[0x83]}`, 640, 195);
-                ctx.fillText(`M[4]:${this.mem[0x84]}`, 640, 210);
+                ctx.fillText(`M[0]:${this.mem[0x80]}`, 560, 190);
+                ctx.fillText(`M[1]:${this.mem[0x81]}`, 560, 205);
+                ctx.fillText(`M[2]:${this.mem[0x82]}`, 560, 220);
+                ctx.fillText(`M[3]:${this.mem[0x83]}`, 640, 190);
+                // Highlight M[4] if it has result
+                if (this.mem[0x84] > 0) {
+                    ctx.fillStyle = '#4caf50';
+                    ctx.font = 'bold 11px monospace';
+                }
+                ctx.fillText(`M[4]:${this.mem[0x84]}`, 640, 205);
+
+                // Draw animated arrows for dataflow
+                if (!this.halted) {
+                    ctx.strokeStyle = '#2196f3';  // Blue arrows
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([5, 3]);
+
+                    if (isLoad) {
+                        // Memory -> Registers arrow
+                        this.drawArrow(ctx, 550, 180, 350, 180, '#2196f3');
+                    } else if (isStore) {
+                        // Registers -> Memory arrow
+                        this.drawArrow(ctx, 350, 200, 550, 200, '#e91e63');
+                    } else if (isAdd) {
+                        // Registers -> ALU arrow
+                        this.drawArrow(ctx, 350, 170, 400, 170, '#ff9800');
+                        // ALU -> Registers arrow
+                        this.drawArrow(ctx, 500, 190, 550, 190, '#4caf50');
+                    }
+
+                    ctx.setLineDash([]);
+                }
+
+                // Pipeline stage indicators
+                ctx.font = '10px Arial';
+                ctx.fillStyle = '#666';
+                const stages = ['IF', 'ID', 'EX', 'MEM', 'WB'];
+                let activeStage = 2;  // Default EX
+                if (isLoad) activeStage = 3;  // MEM
+                else if (isStore) activeStage = 3;  // MEM
+
+                for (let i = 0; i < stages.length; i++) {
+                    const x = 50 + i * 60;
+                    if (i === activeStage && !this.halted) {
+                        ctx.fillStyle = '#4caf50';
+                        ctx.fillRect(x, 280, 50, 20);
+                        ctx.fillStyle = '#fff';
+                    } else {
+                        ctx.strokeStyle = '#ccc';
+                        ctx.strokeRect(x, 280, 50, 20);
+                        ctx.fillStyle = '#666';
+                    }
+                    ctx.fillText(stages[i], x + 15, 294);
+                }
+            }
+
+            drawArrow(ctx, fromX, fromY, toX, toY, color) {
+                const headlen = 8;
+                const angle = Math.atan2(toY - fromY, toX - fromX);
+
+                ctx.strokeStyle = color;
+                ctx.fillStyle = color;
+                ctx.lineWidth = 2;
+
+                ctx.beginPath();
+                ctx.moveTo(fromX, fromY);
+                ctx.lineTo(toX, toY);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(toX, toY);
+                ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 6), toY - headlen * Math.sin(angle - Math.PI / 6));
+                ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
+                ctx.closePath();
+                ctx.fill();
             }
         }
 
@@ -581,38 +697,135 @@
                 ctx.fillText(`State: ${this.state}`, 20, 90);
                 ctx.fillText(`Cycles: ${this.cycles} | Instructions: ${this.instrs}`, 20, 120);
 
-                // FSM states
+                // Determine active operations
+                const isLoadState = this.state.includes('LOAD');
+                const isAddState = this.state.includes('ADD');
+                const isStoreState = this.state === 'STORE';
+
+                // FSM State box with glow effect
+                if (!this.halted) {
+                    ctx.fillStyle = '#ffe0e0';  // Light red background
+                    ctx.fillRect(50, 150, 120, 60);
+                }
+                ctx.strokeStyle = this.halted ? '#999' : '#dc3545';
+                ctx.lineWidth = this.halted ? 2 : 3;
                 ctx.strokeRect(50, 150, 120, 60);
                 ctx.fillStyle = '#333';
-                ctx.font = '12px Arial';
-                ctx.fillText('FSM State:', 60, 175);
-                ctx.font = 'bold 14px Arial';
-                ctx.fillStyle = '#dc3545';
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText('FSM State:', 60, 170);
+                ctx.font = 'bold 16px Arial';
+                ctx.fillStyle = this.halted ? '#999' : '#dc3545';
                 ctx.fillText(this.state, 60, 195);
 
-                // Temp registers
-                ctx.fillStyle = '#333';
-                ctx.font = '12px Arial';
+                // Temp registers with highlighting
+                if (isAddState) {
+                    ctx.fillStyle = '#fff9c4';  // Light yellow for active
+                    ctx.fillRect(200, 150, 150, 100);
+                }
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 2;
                 ctx.strokeRect(200, 150, 150, 100);
-                ctx.fillText('Temp Registers', 220, 175);
-                ctx.font = '10px monospace';
-                ctx.fillText(`T1: ${this.temp[0]}`, 210, 195);
-                ctx.fillText(`T2: ${this.temp[1]}`, 210, 210);
-                ctx.fillText(`T3: ${this.temp[2]}`, 210, 225);
-                ctx.fillText(`T4: ${this.temp[3]}`, 210, 240);
+                ctx.fillStyle = '#333';
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText('Temp Registers', 220, 170);
+                ctx.font = '11px monospace';
 
-                // Memory
-                ctx.font = '12px Arial';
+                // Highlight active temp registers
+                for (let i = 0; i < 4; i++) {
+                    if (this.temp[i] !== 0) {
+                        ctx.fillStyle = '#ff9800';  // Orange for non-zero
+                        ctx.font = 'bold 11px monospace';
+                    } else {
+                        ctx.fillStyle = '#666';
+                        ctx.font = '11px monospace';
+                    }
+                    ctx.fillText(`T${i+1}: ${this.temp[i]}`, 210, 190 + i*17);
+                }
+
+                // Memory with highlighting
+                if (isLoadState || isStoreState) {
+                    ctx.fillStyle = '#e1f5fe';  // Light blue for active
+                    ctx.fillRect(400, 150, 150, 80);
+                }
                 ctx.strokeRect(400, 150, 150, 80);
-                ctx.fillText('Memory', 450, 175);
+                ctx.fillStyle = '#333';
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText('Memory', 450, 170);
                 ctx.font = '10px monospace';
-                ctx.fillText(`M[0]:${this.mem[0x80]}`, 410, 195);
-                ctx.fillText(`M[1]:${this.mem[0x81]}`, 410, 210);
-                ctx.fillText(`M[2]:${this.mem[0x82]}`, 490, 195);
-                ctx.fillText(`M[3]:${this.mem[0x83]}`, 490, 210);
-                ctx.fillStyle = '#28a745';
-                ctx.font = 'bold 11px monospace';
-                ctx.fillText(`M[4]:${this.mem[0x84]}`, 450, 225);
+                ctx.fillStyle = '#333';
+                ctx.fillText(`M[0]:${this.mem[0x80]}`, 410, 190);
+                ctx.fillText(`M[1]:${this.mem[0x81]}`, 410, 205);
+                ctx.fillText(`M[2]:${this.mem[0x82]}`, 490, 190);
+                ctx.fillText(`M[3]:${this.mem[0x83]}`, 490, 205);
+
+                // Highlight result
+                if (this.mem[0x84] > 0) {
+                    ctx.fillStyle = '#28a745';
+                    ctx.font = 'bold 12px monospace';
+                }
+                ctx.fillText(`M[4]:${this.mem[0x84]}`, 450, 220);
+
+                // Draw dataflow arrows
+                if (!this.halted) {
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([5, 3]);
+
+                    if (isLoadState) {
+                        // Memory -> Temp Registers
+                        this.drawArrow(ctx, 400, 180, 350, 180, '#2196f3');
+                    } else if (isAddState) {
+                        // Temp -> Temp (internal operation)
+                        ctx.strokeStyle = '#ff9800';
+                        ctx.beginPath();
+                        ctx.arc(275, 200, 20, 0, Math.PI * 2);
+                        ctx.stroke();
+                        // Arrow showing operation
+                        this.drawArrow(ctx, 285, 210, 295, 220, '#ff9800');
+                    } else if (isStoreState) {
+                        // Temp -> Memory
+                        this.drawArrow(ctx, 350, 200, 400, 200, '#e91e63');
+                    }
+
+                    ctx.setLineDash([]);
+                }
+
+                // FSM Progress bar
+                const states = ['IDLE', 'FETCH', 'DECODE', 'LOAD1', 'LOAD2', 'ADD12',
+                               'LOAD3', 'ADD123', 'LOAD4', 'ADDFINAL', 'STORE', 'HALT'];
+                const currentIndex = states.indexOf(this.state);
+                const progress = currentIndex / (states.length - 1);
+
+                ctx.fillStyle = '#e0e0e0';
+                ctx.fillRect(50, 280, 500, 15);
+                ctx.fillStyle = '#4caf50';
+                ctx.fillRect(50, 280, 500 * progress, 15);
+                ctx.strokeStyle = '#333';
+                ctx.strokeRect(50, 280, 500, 15);
+
+                ctx.fillStyle = '#333';
+                ctx.font = '10px Arial';
+                ctx.fillText(`Progress: ${currentIndex}/${states.length - 1} states (${Math.round(progress * 100)}%)`, 50, 310);
+            }
+
+            drawArrow(ctx, fromX, fromY, toX, toY, color) {
+                const headlen = 8;
+                const angle = Math.atan2(toY - fromY, toX - fromX);
+
+                ctx.strokeStyle = color;
+                ctx.fillStyle = color;
+                ctx.lineWidth = 2;
+
+                ctx.beginPath();
+                ctx.moveTo(fromX, fromY);
+                ctx.lineTo(toX, toY);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(toX, toY);
+                ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 6), toY - headlen * Math.sin(angle - Math.PI / 6));
+                ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
+                ctx.closePath();
+                ctx.fill();
             }
         }
 
@@ -692,62 +905,242 @@
             draw(ctx) {
                 ctx.fillStyle = '#d63031';
                 ctx.font = 'bold 20px Arial';
-                ctx.fillText('🏆 HYBRID Architecture (WINNER!)', 320, 30);
+                ctx.fillText('🏆 HYBRID Architecture (WINNER!)', 300, 30);
                 ctx.fillStyle = '#667eea';
                 ctx.font = '14px Arial';
                 ctx.fillText(`Current: ${this.current}`, 20, 60);
                 ctx.fillText(`Cycles: ${this.cycles} | CISC Instr: ${this.instrs} | Micro-ops: ${this.microOpCount}`, 20, 90);
 
-                // Translator
+                // Get current micro-op
+                const currentOp = this.microOps[this.pc - 1] || {};
+                const isLoadDual = currentOp.op === 'LOAD_DUAL';
+                const isLoadAdd = currentOp.op === 'LOAD_ADD';
+                const isAdd = currentOp.op === 'ADD';
+                const isStore = currentOp.op === 'STORE';
+
+                // Instruction Translator with glow
+                if (!this.halted) {
+                    ctx.fillStyle = '#fff3e0';  // Light orange glow
+                    ctx.fillRect(50, 150, 180, 80);
+                }
+                ctx.strokeStyle = '#ff9800';
+                ctx.lineWidth = 3;
                 ctx.strokeRect(50, 150, 180, 80);
                 ctx.fillStyle = '#333';
-                ctx.font = '12px Arial';
-                ctx.fillText('Instruction Translator', 70, 170);
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText('Instruction Translator', 70, 167);
                 ctx.fillStyle = '#d63031';
-                ctx.font = 'bold 11px Arial';
-                ctx.fillText('CISC → RISC', 100, 190);
-                ctx.fillStyle = '#333';
-                ctx.font = '10px Arial';
-                ctx.fillText('0 cycle (instant)', 85, 210);
+                ctx.font = 'bold 13px Arial';
+                ctx.fillText('CISC → RISC', 90, 188);
+                ctx.fillStyle = '#28a745';
+                ctx.font = 'bold 10px Arial';
+                ctx.fillText('⚡ 0 cycle (instant)', 80, 208);
 
-                // Micro-op Queue
+                // Micro-op Queue with active highlighting
+                const queueActive = !this.halted && this.pc < this.microOps.length;
+                if (queueActive) {
+                    ctx.fillStyle = '#e8f5e9';  // Light green glow
+                    ctx.fillRect(270, 150, 150, 80);
+                }
+                ctx.strokeStyle = queueActive ? '#4caf50' : '#333';
+                ctx.lineWidth = 2;
                 ctx.strokeRect(270, 150, 150, 80);
                 ctx.fillStyle = '#333';
-                ctx.font = '12px Arial';
-                ctx.fillText('Micro-op Queue', 300, 170);
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText('Micro-op Queue', 295, 167);
                 ctx.font = '10px Arial';
-                ctx.fillText(`${this.microOps.length} total ops`, 300, 190);
-                ctx.fillText(`${this.pc}/${this.microOps.length} executed`, 300, 205);
+                ctx.fillText(`${this.microOps.length} total ops`, 295, 188);
 
-                // Registers
-                ctx.strokeRect(460, 150, 150, 100);
-                ctx.font = '12px Arial';
-                ctx.fillText('Registers', 510, 170);
-                ctx.font = '10px monospace';
-                for(let i = 0; i < 4; i++) {
-                    ctx.fillText(`R${i}:${this.regs[i]}`, 470, 190 + i*15);
-                    ctx.fillText(`R${i+4}:${this.regs[i+4]}`, 550, 190 + i*15);
+                // Show current micro-op highlighted
+                ctx.fillStyle = '#4caf50';
+                ctx.font = 'bold 11px Arial';
+                ctx.fillText(`→ ${this.pc}/${this.microOps.length} executed`, 290, 208);
+
+                // Show fusion badge
+                if (isLoadDual || isLoadAdd) {
+                    ctx.fillStyle = '#ffd700';
+                    ctx.fillRect(275, 215, 70, 12);
+                    ctx.fillStyle = '#d63031';
+                    ctx.font = 'bold 9px Arial';
+                    ctx.fillText('⚡ FUSED', 280, 224);
                 }
 
-                // Memory
-                ctx.strokeRect(640, 150, 120, 80);
-                ctx.font = '12px Arial';
-                ctx.fillText('Memory', 670, 170);
+                // Registers with advanced highlighting
+                const regsActive = isAdd || isLoadDual || isLoadAdd || isStore;
+                if (regsActive) {
+                    ctx.fillStyle = '#e3f2fd';  // Light blue glow
+                    ctx.fillRect(460, 150, 150, 100);
+                }
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(460, 150, 150, 100);
+                ctx.fillStyle = '#333';
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText('Register File', 495, 167);
                 ctx.font = '10px monospace';
-                ctx.fillText(`M[0]:${this.mem[0x80]}`, 650, 190);
-                ctx.fillText(`M[1]:${this.mem[0x81]}`, 650, 205);
-                ctx.fillText(`M[4]:${this.mem[0x84]}`, 650, 220);
 
-                // Optimization note
+                for(let i = 0; i < 4; i++) {
+                    // Highlight modified registers
+                    const isModified = (currentOp.rd === i || currentOp.rd === i+4 ||
+                                      currentOp.rd1 === i || currentOp.rd1 === i+4 ||
+                                      currentOp.rd2 === i || currentOp.rd2 === i+4 ||
+                                      currentOp.rdL === i || currentOp.rdL === i+4 ||
+                                      currentOp.rdA === i || currentOp.rdA === i+4);
+
+                    if (isModified && !this.halted) {
+                        ctx.fillStyle = '#4caf50';
+                        ctx.font = 'bold 11px monospace';
+                    } else if (this.regs[i] > 0 || this.regs[i+4] > 0) {
+                        ctx.fillStyle = '#2196f3';
+                        ctx.font = 'bold 10px monospace';
+                    } else {
+                        ctx.fillStyle = '#666';
+                        ctx.font = '10px monospace';
+                    }
+                    ctx.fillText(`R${i}:${this.regs[i]}`, 470, 185 + i*15);
+
+                    if (isModified && !this.halted) {
+                        ctx.fillStyle = '#4caf50';
+                        ctx.font = 'bold 11px monospace';
+                    } else if (this.regs[i+4] > 0) {
+                        ctx.fillStyle = '#2196f3';
+                        ctx.font = 'bold 10px monospace';
+                    } else {
+                        ctx.fillStyle = '#666';
+                        ctx.font = '10px monospace';
+                    }
+                    ctx.fillText(`R${i+4}:${this.regs[i+4]}`, 545, 185 + i*15);
+                }
+
+                // Memory with highlighting
+                const memActive = isLoadDual || isLoadAdd || isStore;
+                if (memActive) {
+                    ctx.fillStyle = '#fce4ec';  // Light pink glow
+                    ctx.fillRect(640, 150, 120, 80);
+                }
+                ctx.strokeRect(640, 150, 120, 80);
+                ctx.fillStyle = '#333';
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText('Memory', 665, 167);
+                ctx.font = '10px monospace';
+                ctx.fillStyle = '#333';
+                ctx.fillText(`M[0]:${this.mem[0x80]}`, 650, 188);
+                ctx.fillText(`M[1]:${this.mem[0x81]}`, 650, 203);
+
+                // Highlight result with sparkle
+                if (this.mem[0x84] > 0) {
+                    ctx.fillStyle = '#28a745';
+                    ctx.font = 'bold 12px monospace';
+                    ctx.fillText(`M[4]:${this.mem[0x84]} ✓`, 648, 218);
+                } else {
+                    ctx.fillText(`M[4]:${this.mem[0x84]}`, 650, 218);
+                }
+
+                // Draw animated dataflow arrows
+                if (!this.halted) {
+                    ctx.lineWidth = 3;
+                    ctx.setLineDash([5, 3]);
+
+                    if (isLoadDual) {
+                        // Memory -> Registers (parallel dual path)
+                        this.drawArrow(ctx, 640, 175, 610, 175, '#2196f3');
+                        this.drawArrow(ctx, 640, 185, 610, 185, '#2196f3');
+                        // Label: PARALLEL
+                        ctx.fillStyle = '#2196f3';
+                        ctx.font = 'bold 9px Arial';
+                        ctx.fillText('PARALLEL', 615, 165);
+                    } else if (isLoadAdd) {
+                        // Memory -> Registers (load)
+                        this.drawArrow(ctx, 640, 180, 610, 180, '#ff9800');
+                        // Internal fusion operation
+                        ctx.strokeStyle = '#ffd700';
+                        ctx.beginPath();
+                        ctx.arc(535, 200, 15, 0, Math.PI * 2);
+                        ctx.stroke();
+                        // Label: FUSED
+                        ctx.fillStyle = '#ff9800';
+                        ctx.font = 'bold 9px Arial';
+                        ctx.fillText('FUSED', 518, 195);
+                    } else if (isAdd) {
+                        // Registers internal operation
+                        this.drawArrow(ctx, 520, 190, 540, 200, '#4caf50');
+                        this.drawArrow(ctx, 540, 200, 520, 210, '#4caf50');
+                    } else if (isStore) {
+                        // Registers -> Memory
+                        this.drawArrow(ctx, 610, 200, 640, 200, '#e91e63');
+                    }
+
+                    ctx.setLineDash([]);
+                }
+
+                // Translator -> Queue arrow
+                if (!this.halted) {
+                    ctx.strokeStyle = '#ff9800';
+                    ctx.lineWidth = 2;
+                    this.drawArrow(ctx, 230, 190, 270, 190, '#ff9800');
+                }
+
+                // Queue -> Registers arrow
+                if (queueActive) {
+                    ctx.strokeStyle = '#4caf50';
+                    ctx.lineWidth = 2;
+                    this.drawArrow(ctx, 420, 190, 460, 190, '#4caf50');
+                }
+
+                // Progress bar for Hybrid
+                const progress = this.pc / this.microOps.length;
+                ctx.fillStyle = '#e0e0e0';
+                ctx.fillRect(50, 320, 700, 18);
+                ctx.fillStyle = '#4caf50';
+                ctx.fillRect(50, 320, 700 * progress, 18);
+                ctx.strokeStyle = '#333';
+                ctx.strokeRect(50, 320, 700, 18);
+
+                ctx.fillStyle = '#333';
+                ctx.font = 'bold 11px Arial';
+                ctx.fillText(`Progress: Cycle ${this.cycles}/6 (${Math.round(progress * 100)}%)`, 50, 352);
+
+                // Optimization badges
                 ctx.fillStyle = '#28a745';
                 ctx.font = 'bold 13px Arial';
-                ctx.fillText('⚡ OPTIMIZED: Micro-op Fusion Enabled → 6 Cycles!', 20, 280);
+                ctx.fillText('⚡ OPTIMIZED: Micro-op Fusion Enabled → 6 Cycles!', 50, 380);
 
+                // Winner badge
                 if (this.halted && this.mem[0x84] === 50) {
                     ctx.fillStyle = '#ffd700';
-                    ctx.font = 'bold 18px Arial';
-                    ctx.fillText('🏆 WINNER - Lowest Cycles!', 450, 450);
+                    ctx.fillRect(200, 410, 400, 60);
+                    ctx.strokeStyle = '#ff9800';
+                    ctx.lineWidth = 4;
+                    ctx.strokeRect(200, 410, 400, 60);
+
+                    ctx.fillStyle = '#d63031';
+                    ctx.font = 'bold 24px Arial';
+                    ctx.fillText('🏆 WINNER - Lowest Cycles! 🏆', 230, 445);
+                    ctx.font = 'bold 14px Arial';
+                    ctx.fillStyle = '#28a745';
+                    ctx.fillText('6 cycles < 9 (RISC) < 13 (CISC)', 300, 462);
                 }
+            }
+
+            drawArrow(ctx, fromX, fromY, toX, toY, color) {
+                const headlen = 8;
+                const angle = Math.atan2(toY - fromY, toX - fromX);
+
+                ctx.strokeStyle = color;
+                ctx.fillStyle = color;
+                ctx.lineWidth = 2;
+
+                ctx.beginPath();
+                ctx.moveTo(fromX, fromY);
+                ctx.lineTo(toX, toY);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(toX, toY);
+                ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 6), toY - headlen * Math.sin(angle - Math.PI / 6));
+                ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
+                ctx.closePath();
+                ctx.fill();
             }
         }
 
